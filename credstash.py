@@ -363,13 +363,15 @@ def createDdbTable(region=None, table="credential-store", **kwargs):
           "Go read the README about how to create your KMS key")
 
 
-def get_session(**kwargs):
-    if not hasattr(get_session, '_cached_session'):
-        pass
-    elif get_session._cached_session is not None:
-        return get_session._cached_session
-    get_session._cached_session = boto3.Session(**kwargs)
+def get_session(aws_access_key_id=None, aws_secret_access_key=None,
+                aws_session_token=None, profile_name=None):
+    if get_session._cached_session is None:
+        get_session._cached_session = boto3.Session(aws_access_key_id=aws_access_key_id,
+                                                    aws_secret_access_key=aws_secret_access_key,
+                                                    aws_session_token=aws_session_token,
+                                                    profile_name=profile_name)
     return get_session._cached_session
+get_session._cached_session = None
 
 
 def get_assumerole_credentials(arn):
