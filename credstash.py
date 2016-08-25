@@ -259,12 +259,19 @@ def putSecret(name, secret, version="", kms_key="alias/credstash",
 
 
 def getAllSecrets(version="", region=None, table="credential-store",
-                  context=None, **kwargs):
+                  context=None, session=None, **kwargs):
     '''
     fetch and decrypt all secrets
     '''
     output = {}
     secrets = listSecrets(region, table, **kwargs)
+
+    # We only need these things once
+    if session is None:
+        session = get_session(**kwargs)
+    dynamodb = session.resource('dynamodb', region_name=region)
+    kms = session.client('kms', region_name=region)
+
     for credential in set([x["name"] for x in secrets]):
         try:
             output[credential] = getSecret(credential,
@@ -272,6 +279,8 @@ def getAllSecrets(version="", region=None, table="credential-store",
                                            region,
                                            table,
                                            context,
+                                           dynamodb,
+                                           kms,
                                            **kwargs)
         except:
             pass
@@ -371,15 +380,21 @@ def getSecretAction(args, region, **session_params):
 
 def getSecret(name, version="", region=None,
               table="credential-store", context=None,
-              **kwargs):
+              dynamodb=None, kms=None, **kwargs):
     '''
     fetch and decrypt the secret called `name`
     '''
     if not context:
         context = {}
 
-    session = get_session(**kwargs)
-    dynamodb = session.resource('dynamodb', region_name=region)
+    # Can we cache
+    if dynamodb is None or kms is None:
+        session = get_session(**kwargs)
+        if dynamodb is None:
+            dynamodb = session.resource('dynamodb', region_name=region)
+        if kms is None:
+            kms = session.client('kms', region_name=region)
+
     secrets = dynamodb.Table(table)
 
     if version == "":
@@ -398,7 +413,6 @@ def getSecret(name, version="", region=None,
                 "Item {'name': '%s', 'version': '%s'} couldn't be found." % (name, version))
         material = response["Item"]
 
-    kms = session.client('kms', region_name=region)
     # Check the HMAC before we decrypt to verify ciphertext integrity
     try:
         kms_response = kms.decrypt(CiphertextBlob=b64decode(
